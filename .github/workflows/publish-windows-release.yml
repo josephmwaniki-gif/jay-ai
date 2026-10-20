@@ -1,0 +1,53 @@
+name: Publish Jay AI Windows Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-publish:
+    runs-on: windows-latest
+    steps:
+      - name: Check out private source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Build Jay AI
+        run: python -m PyInstaller --noconfirm --clean --windowed --name JayAI --paths . app/main.py
+
+      - name: Package app and checksum
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "dist/JayAI/JayAI.exe")) {
+            throw "Expected dist/JayAI/JayAI.exe was not created."
+          }
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $version = "${{ github.ref_name }}"
+          $zip = "release/JayAI-Windows-$version.zip"
+          Compress-Archive -Path "dist/JayAI/*" -DestinationPath $zip -CompressionLevel Optimal
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  JayAI-Windows-$version.zip" | Set-Content "release/SHA256SUMS.txt" -Encoding ascii
+
+      - name: Publish to public releases repository
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: josephmwaniki-gif/jay-ai-releases
+          tag_name: ${{ github.ref_name }}
+          name: Jay AI ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            release/JayAI-Windows-${{ github.ref_name }}.zip
+            release/SHA256SUMS.txt
+          fail_on_unmatched_files: true
+          token: ${{ secrets.JAY_AI_RELEASES_TOKEN }}
