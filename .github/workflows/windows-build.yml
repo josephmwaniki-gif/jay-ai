@@ -27,9 +27,17 @@ jobs:
       - name: Build Jay AI executable
         run: python -m PyInstaller --noconfirm --clean --windowed --name JayAI --paths . app/main.py
 
-      - name: Upload Windows executable
+      - name: Show build output
+        shell: pwsh
+        run: |
+          Get-ChildItem dist -Recurse
+          if (-not (Test-Path "dist/JayAI/JayAI.exe")) {
+            throw "Expected executable dist/JayAI/JayAI.exe was not created."
+          }
+
+      - name: Upload Windows application
         uses: actions/upload-artifact@v4
         with:
           name: JayAI-Windows
-          path: dist/JayAI.exe
+          path: dist/JayAI/
           if-no-files-found: error
