@@ -9,11 +9,11 @@ from PySide6.QtWidgets import (
 
 BG = "#031126"
 PANEL = "#041a35"
-BORDER = "#007dca"
-CYAN = "#00cfff"
+BORDER = "#8b5cf6"
+CYAN = "#39e58c"
 TEXT = "#eef6ff"
 MUTED = "#9cbce2"
-ACCENT = "#087cff"
+ACCENT = "#7c3aed"
 
 TABS = [
     ("⌂", "Home"), ("♩", "Voice Assistant"), ("⌕", "Files & Search"),
@@ -94,18 +94,18 @@ class JayWindow(QMainWindow):
         self.setStyleSheet("""
             QWidget#root, QWidget { background: """ + BG + """; color: """ + TEXT + """;
                 font-family: 'Segoe UI'; font-size: 13px; }
-            QFrame#sidebar, QFrame#topbar { background: #04152e; border: 1px solid #123b65; border-radius: 12px; }
+            QFrame#sidebar, QFrame#topbar { background: #071b1a; border: 1px solid #8b5cf6; border-radius: 12px; }
             QLabel#brand { color: """ + CYAN + """; font-size: 25px; font-weight: 700; padding: 8px; }
             QLabel#heading { font-size: 17px; font-weight: 700; color: #f4f8ff; }
             QLabel#muted { color: """ + MUTED + """; }
             QLabel#avatar { color: """ + CYAN + """; font-size: 34px; border: 2px solid """ + CYAN + """; border-radius: 30px; padding: 3px; }
-            QLabel#status { color: #d4eaff; padding: 8px; }
+            QLabel#status { color: #e9fff2; padding: 8px; }
             QPushButton#nav { text-align: left; padding: 11px 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; }
             QPushButton#nav:hover, QPushButton#nav:checked { background: """ + ACCENT + """; border-color: """ + CYAN + """; }
             QFrame#card { background: """ + PANEL + """; border: 1px solid """ + BORDER + """; border-radius: 12px; }
-            QPushButton { background: #062448; border: 1px solid """ + BORDER + """; border-radius: 8px; padding: 9px; }
-            QPushButton:hover { background: #0b3d70; border-color: """ + CYAN + """; }
-            QLineEdit, QTextEdit { background: #021126; border: 1px solid """ + CYAN + """; border-radius: 12px; padding: 10px; }
+            QPushButton { background: #18233a; border: 1px solid """ + BORDER + """; border-radius: 8px; padding: 9px; }
+            QPushButton:hover { background: #59331a; border-color: #ff9f1c; /* orange highlight */ border-color: """ + CYAN + """; }
+            QLineEdit, QTextEdit { background: #061b20; border: 1px solid """ + CYAN + """; border-radius: 12px; padding: 10px; }
         """)
 
     def card(self, title, lines):
