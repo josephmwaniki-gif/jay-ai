@@ -26,6 +26,10 @@ class JayWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.settings = QSettings("JayAI", "JayDesktop")
+        self.accent = self.settings.value("accent", "#39e58c")
+        self.purple = self.settings.value("purple", "#8b5cf6")
+        self.orange = self.settings.value("orange", "#ff9f1c")
+        self.background = self.settings.value("background", "#031126")
         self.setWindowTitle("Jay AI")
         self.resize(1500, 920)
         self.setMinimumSize(1050, 700)
@@ -86,27 +90,90 @@ class JayWindow(QMainWindow):
 
         self.pages.addWidget(self.make_home())
         for _, name in TABS[1:]:
-            self.pages.addWidget(self.make_placeholder(name))
+            self.pages.addWidget(self.make_settings() if name == "Settings" else self.make_placeholder(name))
         main_layout.addWidget(self.pages, 1)
         outer.addWidget(main, 1)
         self.setCentralWidget(root)
         self.open_tab(0)
-        self.setStyleSheet("""
-            QWidget#root, QWidget { background: """ + BG + """; color: """ + TEXT + """;
-                font-family: 'Segoe UI'; font-size: 13px; }
-            QFrame#sidebar, QFrame#topbar { background: #071b1a; border: 1px solid #8b5cf6; border-radius: 12px; }
-            QLabel#brand { color: """ + CYAN + """; font-size: 25px; font-weight: 700; padding: 8px; }
-            QLabel#heading { font-size: 17px; font-weight: 700; color: #f4f8ff; }
-            QLabel#muted { color: """ + MUTED + """; }
-            QLabel#avatar { color: """ + CYAN + """; font-size: 34px; border: 2px solid """ + CYAN + """; border-radius: 30px; padding: 3px; }
-            QLabel#status { color: #e9fff2; padding: 8px; }
-            QPushButton#nav { text-align: left; padding: 11px 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; }
-            QPushButton#nav:hover, QPushButton#nav:checked { background: """ + ACCENT + """; border-color: """ + CYAN + """; }
-            QFrame#card { background: """ + PANEL + """; border: 1px solid """ + BORDER + """; border-radius: 12px; }
-            QPushButton { background: #18233a; border: 1px solid """ + BORDER + """; border-radius: 8px; padding: 9px; }
-            QPushButton:hover { background: #59331a; border-color: #ff9f1c; /* orange highlight */ border-color: """ + CYAN + """; }
-            QLineEdit, QTextEdit { background: #061b20; border: 1px solid """ + CYAN + """; border-radius: 12px; padding: 10px; }
+        self.apply_theme()
+
+    def apply_theme(self):
+        self.setStyleSheet(f"""
+            QWidget#root, QWidget {{ background: {self.background}; color: #eef6ff;
+                font-family: 'Segoe UI'; font-size: 13px; }}
+            QFrame#sidebar, QFrame#topbar {{ background: #071b1a; border: 1px solid {self.purple}; border-radius: 12px; }}
+            QLabel#brand {{ color: {self.accent}; font-size: 25px; font-weight: 700; padding: 8px; }}
+            QLabel#heading {{ font-size: 17px; font-weight: 700; color: #f4f8ff; }}
+            QLabel#muted {{ color: #9cbce2; }}
+            QLabel#avatar {{ color: {self.accent}; font-size: 34px; border: 2px solid {self.accent}; border-radius: 30px; padding: 3px; }}
+            QLabel#status {{ color: #e9fff2; padding: 8px; }}
+            QPushButton#nav {{ text-align: left; padding: 11px 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; }}
+            QPushButton#nav:hover, QPushButton#nav:checked {{ background: {self.purple}; border-color: {self.accent}; }}
+            QFrame#card {{ background: #041a35; border: 1px solid {self.purple}; border-radius: 12px; }}
+            QPushButton {{ background: #18233a; border: 1px solid {self.purple}; border-radius: 8px; padding: 9px; }}
+            QPushButton:hover {{ background: #59331a; border-color: {self.orange}; }}
+            QLineEdit, QTextEdit {{ background: #061b20; border: 1px solid {self.accent}; border-radius: 12px; padding: 10px; }}
         """)
+
+    def set_palette(self, accent, purple, orange):
+        self.accent, self.purple, self.orange = accent, purple, orange
+        self.settings.setValue("accent", accent)
+        self.settings.setValue("purple", purple)
+        self.settings.setValue("orange", orange)
+        self.apply_theme()
+
+    def set_background(self, color):
+        self.background = color
+        self.settings.setValue("background", color)
+        self.apply_theme()
+
+    def make_settings(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(14)
+        layout.addWidget(QLabel("Personalize Jay AI", objectName="heading"))
+        layout.addWidget(QLabel("Choose your colours and background. Your choices are saved on this PC.", objectName="muted"))
+
+        palette_card = QFrame()
+        palette_card.setObjectName("card")
+        palette_layout = QVBoxLayout(palette_card)
+        palette_layout.addWidget(QLabel("Accent colour palette", objectName="heading"))
+        palette_layout.addWidget(QLabel("Green + purple + orange (your chosen palette)", objectName="muted"))
+        palette_row = QHBoxLayout()
+        for label, accent, purple, orange in [
+            ("Green • Purple • Orange", "#39e58c", "#8b5cf6", "#ff9f1c"),
+            ("Mint • Violet • Gold", "#6ee7b7", "#a78bfa", "#fbbf24"),
+            ("Emerald • Plum • Coral", "#10b981", "#9333ea", "#fb7185"),
+        ]:
+            button = QPushButton(label)
+            button.clicked.connect(lambda checked=False, a=accent, p=purple, o=orange: self.set_palette(a, p, o))
+            palette_row.addWidget(button)
+        palette_layout.addLayout(palette_row)
+        layout.addWidget(palette_card)
+
+        bg_card = QFrame()
+        bg_card.setObjectName("card")
+        bg_layout = QVBoxLayout(bg_card)
+        bg_layout.addWidget(QLabel("Background", objectName="heading"))
+        bg_layout.addWidget(QLabel("Select a dark background so the colours remain clear.", objectName="muted"))
+        bg_row = QHBoxLayout()
+        for label, color in [
+            ("Midnight Navy", "#031126"),
+            ("Deep Green", "#071b16"),
+            ("Dark Charcoal", "#17151d"),
+        ]:
+            button = QPushButton(label)
+            button.clicked.connect(lambda checked=False, c=color: self.set_background(c))
+            bg_row.addWidget(button)
+        bg_layout.addLayout(bg_row)
+        layout.addWidget(bg_card)
+
+        reset = QPushButton("Reset to my green, purple & orange colours")
+        reset.clicked.connect(lambda: (self.set_palette("#39e58c", "#8b5cf6", "#ff9f1c"), self.set_background("#031126")))
+        layout.addWidget(reset)
+        layout.addStretch()
+        return page
 
     def card(self, title, lines):
         frame = QFrame()
