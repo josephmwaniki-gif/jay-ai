@@ -1,5 +1,5 @@
 import sys
-from PySide6.QtCore import Qt, QSettings
+from PySide6.QtCore import Qt, QSettings, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
@@ -31,6 +31,10 @@ class JayWindow(QMainWindow):
         self.orange = self.settings.value("orange", "#ff9f1c")
         self.background = self.settings.value("background", "#031126")
         self.setWindowTitle("Jay AI")
+        self._rainbow_hue = 0
+        self._rainbow_timer = QTimer(self)
+        self._rainbow_timer.timeout.connect(self.animate_rainbow)
+        self._rainbow_timer.start(120)
         self.resize(1500, 920)
         self.setMinimumSize(1050, 700)
         root = QWidget()
@@ -115,6 +119,10 @@ class JayWindow(QMainWindow):
             QLineEdit, QTextEdit {{ background: #061b20; border: 1px solid {self.accent}; border-radius: 12px; padding: 10px; }}
         """)
 
+    def animate_rainbow(self):
+        self._rainbow_hue = (self._rainbow_hue + 7) % 360
+        self.apply_theme()
+
     def set_palette(self, accent, purple, orange):
         self.accent, self.purple, self.orange = accent, purple, orange
         self.settings.setValue("accent", accent)
@@ -193,9 +201,11 @@ class JayWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(10)
+
         search_row = QHBoxLayout()
         self.search = QLineEdit()
-        self.search.setPlaceholderText("⌕   Search anything... files, apps, folders, or ask Jay...")
+        self.search.setPlaceholderText("Type a message or ask Jay...")
         self.search.returnPressed.connect(self.submit_search)
         send = QPushButton("➤")
         send.clicked.connect(self.submit_search)
@@ -203,60 +213,56 @@ class JayWindow(QMainWindow):
         search_row.addWidget(send)
         layout.addLayout(search_row)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        body = QWidget()
-        grid = QGridLayout(body)
-        grid.setSpacing(10)
-        grid.addWidget(self.card("⚡  Quick Actions", [
-            "📁  Open Files", "▦  Launch App", "⌕  Search Desktop",
-            "▣  Send Message", "☎  Make a Call", "▱  Control Device"
-        ]), 0, 0)
-        grid.addWidget(self.card("◷  Recent Activity", [
-            "📄  Opened: Project Document.pdf",
-            "▶  Installed: VLC Media Player",
-            "▤  Deleted: temp files (with confirmation)",
-            "⌕  Searched: 'Jay AI'", "☎  Called: Mom",
-            "▣  Sent: WhatsApp message"
-        ]), 0, 1)
-        grid.addWidget(self.card("▣  System Overview", [
-            "Windows desktop", "CPU  •  System information",
-            "RAM  •  Memory information", "Storage  •  Disk information",
-            "Battery  •  Power status"
-        ]), 0, 2)
-        grid.addWidget(self.card("☀  Weather", [
-            "Nairobi, Kenya", "Weather service not connected yet."
-        ]), 0, 3)
-        grid.addWidget(self.card("▣  Messages & Calls", [
-            "Send a message or make a call to anyone.",
-            "Jay will ask which app to use when more than one is available."
-        ]), 1, 0)
-        grid.addWidget(self.card("🛡  File Safety & Permissions", [
-            "Jay will warn you before risky actions.",
-            "Deletion and uninstall actions should require confirmation."
-        ]), 1, 1)
-        grid.addWidget(self.card("▦  Active Apps", [
-            "🌐  Browser", "📁  File Explorer", "🟢  WhatsApp",
-            "▣  Microsoft Word", "▤  Notepad"
-        ]), 1, 2)
-        grid.addWidget(self.card("⌕  Quick Search", [
-            "Find a file or folder", "Open an app", "Search the web",
-            "Look for something on desktop"
-        ]), 1, 3)
-        grid.addWidget(self.card("▦  News & Headlines", [
-            "News feed will appear here when connected."
-        ]), 2, 0, 1, 2)
-        grid.addWidget(self.card("▤  Recent Notes", [
-            "• Work on Jay AI project", "• Study Cisco Packet Tracer",
-            "• Save important links"
-        ]), 2, 2)
-        grid.addWidget(self.card("💡  Jay Tips", [
-            "Try: 'Find my files'", "'Open WhatsApp'",
-            "'What's the weather?'", "'Call Mom'"
-        ]), 2, 3)
-        scroll.setWidget(body)
-        layout.addWidget(scroll, 1)
+        columns = QHBoxLayout()
+        columns.setSpacing(12)
+        center = QFrame()
+        center.setObjectName("card")
+        center_layout = QVBoxLayout(center)
+        center_layout.setContentsMargins(18, 16, 18, 16)
+        cartoon = QLabel("👦🏽")
+        cartoon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        cartoon.setStyleSheet("font-size: 112px; background: transparent; padding: 12px;")
+        center_layout.addWidget(cartoon, 2)
+        welcome = QLabel("Good day, Sir!")
+        welcome.setObjectName("heading")
+        welcome.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        welcome.setStyleSheet("font-size: 25px;")
+        center_layout.addWidget(welcome)
+        subtitle = QLabel("I'm Jay. How can I help you today?")
+        subtitle.setObjectName("muted")
+        subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        center_layout.addWidget(subtitle)
+        actions = QGridLayout()
+        actions.setSpacing(8)
+        for index, (label, color) in enumerate([
+            ("📁  Open Files", self.accent),
+            ("🌐  Browse Web", self.purple),
+            ("▦  Open Apps", self.orange),
+        ]):
+            button = QPushButton(label)
+            button.setStyleSheet(f"border: 1px solid {color}; padding: 14px 8px;")
+            actions.addWidget(button, 0, index)
+        center_layout.addLayout(actions)
+        columns.addWidget(center, 3)
+
+        right = QVBoxLayout()
+        right.setSpacing(10)
+        right.addWidget(self.card("⚡  Quick Tools", [
+            "🎙  Voice Assistant", "▦  Calculator",
+            "📸  Take Screenshot", "ℹ  System Info"
+        ]))
+        right.addWidget(self.card("✓  Today's Plan", [
+            "☐  Finish the Jay AI project",
+            "☐  Study networking",
+            "☐  Build something amazing"
+        ]))
+        right.addWidget(self.card("◷  Recent Activity", [
+            "📄  Project Document.pdf",
+            "🟢  WhatsApp",
+            "🌐  Google Chrome"
+        ]))
+        columns.addLayout(right, 2)
+        layout.addLayout(columns, 1)
         return page
 
     def submit_search(self):
