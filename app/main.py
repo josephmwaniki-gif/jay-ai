@@ -102,8 +102,10 @@ class JayWindow(QMainWindow):
         self.apply_theme()
 
     def apply_theme(self):
+        rainbow = QColor.fromHsv(self._rainbow_hue, 255, 255).name()
         self.setStyleSheet(f"""
-            QWidget#root, QWidget {{ background: {self.background}; color: #eef6ff;
+            QWidget#root {{ background: {self.background}; color: #eef6ff; border: 3px solid {rainbow}; border-radius: 16px; }}
+            QWidget {{ background: {self.background}; color: #eef6ff;
                 font-family: 'Segoe UI'; font-size: 13px; }}
             QFrame#sidebar, QFrame#topbar {{ background: #071b1a; border: 1px solid {self.purple}; border-radius: 12px; }}
             QLabel#brand {{ color: {self.accent}; font-size: 25px; font-weight: 700; padding: 8px; }}
