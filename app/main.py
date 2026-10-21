@@ -1,6 +1,6 @@
 import sys
 from PySide6.QtCore import Qt, QSettings, QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPainter, QPen, QBrush
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
     QLineEdit, QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget,
@@ -21,6 +21,93 @@ TABS = [
     ("▱", "Device Control"), ("⚙", "Settings"), ("▤", "Memory & Notes"),
     ("▦", "News & Weather"), ("?", "Help & Support")
 ]
+
+
+class MiniMeAvatar(QWidget):
+    """Simple animated cartoon avatar with speaking and listening expressions."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.mode = "idle"
+        self.frame = 0
+        self.setMinimumSize(260, 300)
+        self.setSizePolicy(self.sizePolicy().horizontalPolicy(), self.sizePolicy().verticalPolicy())
+        self.anim = QTimer(self)
+        self.anim.timeout.connect(self._tick)
+        self.anim.start(140)
+
+    def set_mode(self, mode):
+        if mode not in ("idle", "speaking", "listening"):
+            mode = "idle"
+        self.mode = mode
+        self.update()
+
+    def _tick(self):
+        self.frame = (self.frame + 1) % 12
+        if self.mode != "idle":
+            self.update()
+
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        cx = w / 2
+        # Listening rings pulse; speaking has a warm rainbow halo.
+        if self.mode == "listening":
+            halo = QColor("#39e58c")
+            halo.setAlpha(35 + (self.frame % 6) * 12)
+            p.setPen(QPen(halo, 4))
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawEllipse(int(cx-100), int(h*0.08), 200, 200)
+            p.drawEllipse(int(cx-112), int(h*0.08)-12, 224, 224)
+        else:
+            halo = QColor.fromHsv((self.frame * 30) % 360, 220, 255)
+            halo.setAlpha(80 if self.mode == "speaking" else 32)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QBrush(halo))
+            p.drawEllipse(int(cx-104), int(h*0.08), 208, 208)
+
+        # Neck and jacket
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(QColor("#17243c"))
+        p.drawRoundedRect(int(cx-26), int(h*0.52), 52, 48, 12, 12)
+        p.setBrush(QColor("#25344f"))
+        p.drawEllipse(int(cx-88), int(h*0.57), 176, 145)
+        p.setBrush(QColor("#39e58c"))
+        p.drawPolygon([
+            __import__("PySide6.QtCore", fromlist=["QPoint"]).QPoint(int(cx), int(h*0.60)),
+            __import__("PySide6.QtCore", fromlist=["QPoint"]).QPoint(int(cx-22), int(h*0.70)),
+            __import__("PySide6.QtCore", fromlist=["QPoint"]).QPoint(int(cx), int(h*0.78)),
+            __import__("PySide6.QtCore", fromlist=["QPoint"]).QPoint(int(cx+22), int(h*0.70)),
+        ])
+
+        # Face and ears
+        p.setBrush(QColor("#9b603e"))
+        p.drawEllipse(int(cx-67), int(h*0.14), 134, 158)
+        p.drawEllipse(int(cx-78), int(h*0.31), 22, 34)
+        p.drawEllipse(int(cx+56), int(h*0.31), 22, 34)
+        # Hair, no cap or logo
+        p.setBrush(QColor("#211812"))
+        p.drawEllipse(int(cx-69), int(h*0.12), 138, 62)
+        p.drawRoundedRect(int(cx-69), int(h*0.19), 22, 35, 10, 10)
+        p.drawRoundedRect(int(cx+47), int(h*0.19), 22, 35, 10, 10)
+        # Eyes: attentive look while listening
+        eye_y = int(h*0.32)
+        p.setBrush(QColor("#fffaf0"))
+        p.drawEllipse(int(cx-42), eye_y, 27, 22)
+        p.drawEllipse(int(cx+15), eye_y, 27, 22)
+        p.setBrush(QColor("#201810"))
+        p.drawEllipse(int(cx-33), eye_y+5, 12, 14)
+        p.drawEllipse(int(cx+24), eye_y+5, 12, 14)
+        # Smile / animated mouth
+        p.setPen(QPen(QColor("#4b211b"), 4))
+        if self.mode == "speaking":
+            mouth_h = 8 + (self.frame % 4) * 5
+            p.setBrush(QColor("#54201f"))
+            p.drawEllipse(int(cx-19), int(h*0.43), 38, mouth_h)
+        else:
+            p.setBrush(Qt.BrushStyle.NoBrush)
+            p.drawArc(int(cx-24), int(h*0.405), 48, 28, 200*16, 140*16)
+        p.end()
 
 class JayWindow(QMainWindow):
     def __init__(self):
@@ -221,10 +308,23 @@ class JayWindow(QMainWindow):
         center.setObjectName("card")
         center_layout = QVBoxLayout(center)
         center_layout.setContentsMargins(18, 16, 18, 16)
-        cartoon = QLabel("👦🏽")
-        cartoon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        cartoon.setStyleSheet("font-size: 112px; background: transparent; padding: 12px;")
-        center_layout.addWidget(cartoon, 2)
+        self.avatar = MiniMeAvatar()
+        center_layout.addWidget(self.avatar, 2)
+        self.avatar_status = QLabel("● Ready when you are")
+        self.avatar_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.avatar_status.setObjectName("muted")
+        center_layout.addWidget(self.avatar_status)
+        state_row = QHBoxLayout()
+        listen_btn = QPushButton("🎧  I'm talking")
+        listen_btn.clicked.connect(lambda: self.set_avatar_mode("listening"))
+        speak_btn = QPushButton("🗣  Jay is talking")
+        speak_btn.clicked.connect(lambda: self.set_avatar_mode("speaking"))
+        idle_btn = QPushButton("✓  Ready")
+        idle_btn.clicked.connect(lambda: self.set_avatar_mode("idle"))
+        state_row.addWidget(listen_btn)
+        state_row.addWidget(speak_btn)
+        state_row.addWidget(idle_btn)
+        center_layout.addLayout(state_row)
         welcome = QLabel("Good day, Sir!")
         welcome.setObjectName("heading")
         welcome.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -266,6 +366,15 @@ class JayWindow(QMainWindow):
         columns.addLayout(right, 2)
         layout.addLayout(columns, 1)
         return page
+
+    def set_avatar_mode(self, mode):
+        self.avatar.set_mode(mode)
+        labels = {
+            "idle": "● Ready when you are",
+            "listening": "◉ Listening — Jay is paying attention",
+            "speaking": "♫ Jay is speaking",
+        }
+        self.avatar_status.setText(labels[mode])
 
     def submit_search(self):
         query = self.search.text().strip()
