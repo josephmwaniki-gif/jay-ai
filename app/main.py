@@ -1,19 +1,21 @@
 import sys
-from PySide6.QtCore import Qt, QSettings, QTimer
+import threading
+from datetime import datetime
+from PySide6.QtCore import Qt, QSettings, QTimer, QPoint, Signal
 from PySide6.QtGui import QColor, QPainter, QPen, QBrush
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QFrame, QLabel, QPushButton,
     QLineEdit, QVBoxLayout, QHBoxLayout, QGridLayout, QStackedWidget,
-    QTextEdit, QScrollArea
+    QTextEdit, QScrollArea, QMessageBox
 )
+from jay_core.ai import build_router_from_env
 
-BG = "#031126"
-PANEL = "#041a35"
-BORDER = "#8b5cf6"
-CYAN = "#39e58c"
+BG = "#07111f"      # Midnight Blue
+PANEL = "#0b1c30"
+BORDER = "#1c3556"
+ACCENT = "#1687ff"
 TEXT = "#eef6ff"
 MUTED = "#9cbce2"
-ACCENT = "#7c3aed"
 
 TABS = [
     ("⌂", "Home"), ("♩", "Voice Assistant"), ("⌕", "Files & Search"),
@@ -51,16 +53,16 @@ class MiniMeAvatar(QWidget):
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
         cx = w / 2
-        # Listening rings pulse; speaking has a warm rainbow halo.
+        # Listening rings pulse; speaking has a stronger accent halo.
         if self.mode == "listening":
-            halo = QColor("#39e58c")
+            halo = QColor(ACCENT)
             halo.setAlpha(35 + (self.frame % 6) * 12)
             p.setPen(QPen(halo, 4))
             p.setBrush(Qt.BrushStyle.NoBrush)
             p.drawEllipse(int(cx-100), int(h*0.08), 200, 200)
             p.drawEllipse(int(cx-112), int(h*0.08)-12, 224, 224)
         else:
-            halo = QColor.fromHsv((self.frame * 30) % 360, 220, 255)
+            halo = QColor(ACCENT)
             halo.setAlpha(80 if self.mode == "speaking" else 32)
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(QBrush(halo))
@@ -72,12 +74,12 @@ class MiniMeAvatar(QWidget):
         p.drawRoundedRect(int(cx-26), int(h*0.52), 52, 48, 12, 12)
         p.setBrush(QColor("#25344f"))
         p.drawEllipse(int(cx-88), int(h*0.57), 176, 145)
-        p.setBrush(QColor("#39e58c"))
+        p.setBrush(QColor(ACCENT))
         p.drawPolygon([
-            __import__("PySide6.QtCore", fromlist=["QPoint"]).QPoint(int(cx), int(h*0.60)),
-            __import__("PySide6.QtCore", fromlist=["QPoint"]).QPoint(int(cx-22), int(h*0.70)),
-            __import__("PySide6.QtCore", fromlist=["QPoint"]).QPoint(int(cx), int(h*0.78)),
-            __import__("PySide6.QtCore", fromlist=["QPoint"]).QPoint(int(cx+22), int(h*0.70)),
+            QPoint(int(cx), int(h*0.60)),
+            QPoint(int(cx-22), int(h*0.70)),
+            QPoint(int(cx), int(h*0.78)),
+            QPoint(int(cx+22), int(h*0.70)),
         ])
 
         # Face and ears
@@ -110,18 +112,22 @@ class MiniMeAvatar(QWidget):
         p.end()
 
 class JayWindow(QMainWindow):
+    reply_ready = Signal(str, str)  # (kind, text) emitted from the worker thread
+
     def __init__(self):
         super().__init__()
         self.settings = QSettings("JayAI", "JayDesktop")
-        self.accent = self.settings.value("accent", "#39e58c")
-        self.purple = self.settings.value("purple", "#8b5cf6")
-        self.orange = self.settings.value("orange", "#ff9f1c")
-        self.background = self.settings.value("background", "#031126")
+        if self.settings.value("theme_version") != "2":  # drop the old green/purple/orange palette
+            for key in ("accent", "purple", "orange", "background"):
+                self.settings.remove(key)
+            self.settings.setValue("theme_version", "2")
+        self.accent = self.settings.value("accent", ACCENT)
+        self.purple = self.settings.value("purple", BORDER)      # border / secondary colour
+        self.orange = self.settings.value("orange", "#5ab0ff")   # hover highlight
+        self.background = self.settings.value("background", BG)
         self.setWindowTitle("Jay AI")
-        self._rainbow_hue = 0
-        self._rainbow_timer = QTimer(self)
-        self._rainbow_timer.timeout.connect(self.animate_rainbow)
-        self._rainbow_timer.start(120)
+        self.router = build_router_from_env()
+        self.reply_ready.connect(self._show_reply)
         self.resize(1500, 920)
         self.setMinimumSize(1050, 700)
         root = QWidget()
@@ -158,8 +164,9 @@ class JayWindow(QMainWindow):
         mini.setObjectName("card")
         mini_layout = QVBoxLayout(mini)
         mini_layout.addWidget(QLabel("◉  Jay AI", objectName="heading"))
-        mini_layout.addWidget(QLabel("🟢 Online", objectName="muted"))
-        mini_layout.addWidget(QLabel("Always here, whenever you need me.", objectName="muted"))
+        self.ai_status = QLabel(self.ai_status_text(), objectName="muted")
+        self.ai_status.setWordWrap(True)
+        mini_layout.addWidget(self.ai_status)
         side.addWidget(mini)
         outer.addWidget(sidebar)
 
@@ -175,8 +182,12 @@ class JayWindow(QMainWindow):
         greeting.addWidget(QLabel("Good day, Sir!", objectName="heading"))
         greeting.addWidget(QLabel("How can I help you today?", objectName="muted"))
         top_layout.addLayout(greeting, 1)
-        top_layout.addWidget(QLabel("🟢  Online     ◉ Wi-Fi     ▣ 78%", objectName="status"))
-        top_layout.addWidget(QLabel("11:42 AM\nNairobi, Kenya", objectName="status"))
+        self.clock = QLabel("", objectName="status")
+        top_layout.addWidget(self.clock)
+        self._clock_timer = QTimer(self)
+        self._clock_timer.timeout.connect(self.update_clock)
+        self._clock_timer.start(1000)
+        self.update_clock()
         main_layout.addWidget(top)
 
         self.pages.addWidget(self.make_home())
@@ -189,12 +200,11 @@ class JayWindow(QMainWindow):
         self.apply_theme()
 
     def apply_theme(self):
-        rainbow = QColor.fromHsv(self._rainbow_hue, 255, 255).name()
         self.setStyleSheet(f"""
-            QWidget#root {{ background: {self.background}; color: #eef6ff; border: 3px solid {rainbow}; border-radius: 16px; }}
+            QWidget#root {{ background: {self.background}; color: #eef6ff; border: 2px solid {self.purple}; border-radius: 16px; }}
             QWidget {{ background: {self.background}; color: #eef6ff;
                 font-family: 'Segoe UI'; font-size: 13px; }}
-            QFrame#sidebar, QFrame#topbar {{ background: #071b1a; border: 1px solid {self.purple}; border-radius: 12px; }}
+            QFrame#sidebar, QFrame#topbar {{ background: #0a1a2e; border: 1px solid {self.purple}; border-radius: 12px; }}
             QLabel#brand {{ color: {self.accent}; font-size: 25px; font-weight: 700; padding: 8px; }}
             QLabel#heading {{ font-size: 17px; font-weight: 700; color: #f4f8ff; }}
             QLabel#muted {{ color: #9cbce2; }}
@@ -202,15 +212,20 @@ class JayWindow(QMainWindow):
             QLabel#status {{ color: #e9fff2; padding: 8px; }}
             QPushButton#nav {{ text-align: left; padding: 11px 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; }}
             QPushButton#nav:hover, QPushButton#nav:checked {{ background: {self.purple}; border-color: {self.accent}; }}
-            QFrame#card {{ background: #041a35; border: 1px solid {self.purple}; border-radius: 12px; }}
+            QFrame#card {{ background: #0b1c30; border: 1px solid {self.purple}; border-radius: 12px; }}
             QPushButton {{ background: #18233a; border: 1px solid {self.purple}; border-radius: 8px; padding: 9px; }}
-            QPushButton:hover {{ background: #59331a; border-color: {self.orange}; }}
-            QLineEdit, QTextEdit {{ background: #061b20; border: 1px solid {self.accent}; border-radius: 12px; padding: 10px; }}
+            QPushButton:hover {{ background: #12325a; border-color: {self.orange}; }}
+            QLineEdit, QTextEdit {{ background: #0a1a2e; border: 1px solid {self.accent}; border-radius: 12px; padding: 10px; }}
         """)
 
-    def animate_rainbow(self):
-        self._rainbow_hue = (self._rainbow_hue + 7) % 360
-        self.apply_theme()
+    def update_clock(self):
+        self.clock.setText(datetime.now().strftime("%H:%M\n%a %d %b"))
+
+    def ai_status_text(self):
+        names = self.router.provider_names
+        if not names:
+            return "AI not connected.\nSet JAY_ANTHROPIC_API_KEY to enable chat."
+        return "AI provider configured: " + ", ".join(names) + "\n(connection not yet verified)"
 
     def set_palette(self, accent, purple, orange):
         self.accent, self.purple, self.orange = accent, purple, orange
@@ -236,12 +251,12 @@ class JayWindow(QMainWindow):
         palette_card.setObjectName("card")
         palette_layout = QVBoxLayout(palette_card)
         palette_layout.addWidget(QLabel("Accent colour palette", objectName="heading"))
-        palette_layout.addWidget(QLabel("Green + purple + orange (your chosen palette)", objectName="muted"))
+        palette_layout.addWidget(QLabel("Midnight Blue is the default", objectName="muted"))
         palette_row = QHBoxLayout()
         for label, accent, purple, orange in [
-            ("Green • Purple • Orange", "#39e58c", "#8b5cf6", "#ff9f1c"),
-            ("Mint • Violet • Gold", "#6ee7b7", "#a78bfa", "#fbbf24"),
-            ("Emerald • Plum • Coral", "#10b981", "#9333ea", "#fb7185"),
+            ("Midnight Blue", "#1687ff", "#1c3556", "#5ab0ff"),
+            ("Sky", "#38bdf8", "#1e3a5f", "#7dd3fc"),
+            ("Indigo", "#6366f1", "#2a2f5e", "#a5b4fc"),
         ]:
             button = QPushButton(label)
             button.clicked.connect(lambda checked=False, a=accent, p=purple, o=orange: self.set_palette(a, p, o))
@@ -256,8 +271,8 @@ class JayWindow(QMainWindow):
         bg_layout.addWidget(QLabel("Select a dark background so the colours remain clear.", objectName="muted"))
         bg_row = QHBoxLayout()
         for label, color in [
-            ("Midnight Navy", "#031126"),
-            ("Deep Green", "#071b16"),
+            ("Midnight Blue", "#07111f"),
+            ("Deep Navy", "#050b14"),
             ("Dark Charcoal", "#17151d"),
         ]:
             button = QPushButton(label)
@@ -266,8 +281,8 @@ class JayWindow(QMainWindow):
         bg_layout.addLayout(bg_row)
         layout.addWidget(bg_card)
 
-        reset = QPushButton("Reset to my green, purple & orange colours")
-        reset.clicked.connect(lambda: (self.set_palette("#39e58c", "#8b5cf6", "#ff9f1c"), self.set_background("#031126")))
+        reset = QPushButton("Reset to Midnight Blue")
+        reset.clicked.connect(lambda: (self.set_palette(ACCENT, BORDER, "#5ab0ff"), self.set_background(BG)))
         layout.addWidget(reset)
         layout.addStretch()
         return page
@@ -301,6 +316,11 @@ class JayWindow(QMainWindow):
         search_row.addWidget(self.search, 1)
         search_row.addWidget(send)
         layout.addLayout(search_row)
+        self.chat_log = QTextEdit()
+        self.chat_log.setReadOnly(True)
+        self.chat_log.setMaximumHeight(150)
+        self.chat_log.setPlaceholderText("Conversation appears here.")
+        layout.addWidget(self.chat_log)
 
         columns = QHBoxLayout()
         columns.setSpacing(12)
@@ -354,14 +374,10 @@ class JayWindow(QMainWindow):
             "📸  Take Screenshot", "ℹ  System Info"
         ]))
         right.addWidget(self.card("✓  Today's Plan", [
-            "☐  Finish the Jay AI project",
-            "☐  Study networking",
-            "☐  Build something amazing"
+            "No tasks yet. Task tracking is not built yet."
         ]))
         right.addWidget(self.card("◷  Recent Activity", [
-            "📄  Project Document.pdf",
-            "🟢  WhatsApp",
-            "🌐  Google Chrome"
+            "No recent activity yet."
         ]))
         columns.addLayout(right, 2)
         layout.addLayout(columns, 1)
@@ -378,9 +394,22 @@ class JayWindow(QMainWindow):
 
     def submit_search(self):
         query = self.search.text().strip()
-        if query:
-            QMessageBox = __import__("PySide6.QtWidgets", fromlist=["QMessageBox"]).QMessageBox
-            QMessageBox.information(self, "Jay AI", f"Search received:\n{query}\n\nSearch actions will be connected in a later step.")
+        if not query:
+            return
+        self.search.clear()
+        self.chat_log.append(f"You: {query}")
+        self.search.setEnabled(False)
+        threading.Thread(target=self._ask_router, args=(query,), daemon=True).start()
+
+    def _ask_router(self, query):
+        result = self.router.chat(query)  # network call; runs off the UI thread
+        self.reply_ready.emit(result.kind.value, result.message)
+
+    def _show_reply(self, kind, text):
+        label = "Jay" if kind == "generated" else "Jay (unavailable)"
+        self.chat_log.append(f"{label}: {text}")
+        self.search.setEnabled(True)
+        self.search.setFocus()
 
     def make_placeholder(self, name):
         page = QWidget()

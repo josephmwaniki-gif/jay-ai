@@ -15,4 +15,13 @@ Install Python 3.11 or newer, then run:
     python -m pip install -r requirements.txt
     python -m app.main
 
-The current chat is a UI prototype; online AI services are not connected yet.
+## Enable AI chat
+Copy `.env.example` for reference and set `JAY_ANTHROPIC_API_KEY` (and optionally the
+`JAY_OPENAI_*` variables) as environment variables before launching. Without a key the
+app shows "AI not connected" and chat returns a clear error. Never commit real keys.
+A key in a desktop environment variable is a stopgap; the planned design keeps keys on a backend.
+
+## Tests
+    python -m unittest discover -s tests -v
+
+Provider tests use mocks only; they do not prove a live provider works.
